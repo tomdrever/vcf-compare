@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vcf_compare"
+dynamic = ["version"]
+description = "Tool for comparing VCFs"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.3.1",
+    "vcfpy>=0.14.2",
+]
+
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.15.6",
+]
