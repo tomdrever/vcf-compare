@@ -7,14 +7,24 @@ name = "vcf_compare"
 dynamic = ["version"]
 description = "Tool for comparing VCFs"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "click>=8.3.1",
-    "vcfpy>=0.14.2",
+    "cyvcf2>=0.14.2",
+    "matplotlib",
+    "simple-venn @ https://github.com/tomdrever/simple-venn/archive/refs/heads/matplotlib_fix.zip"
 ]
-
 
 [project.optional-dependencies]
 dev = [
     "ruff>=0.15.6",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "vcf_compare.__version__"}
+
+[tool.ruff]
+line-length = 100
+
+[project.scripts]
+venn-compare="vcf_compare.cli:venn_compare"
