@@ -1,31 +1,31 @@
-import sys
-
 from cyvcf2 import VCF
 from matplotlib.axes import Axes
-from simple_venn import venn4
+from simple_venn import venn2, venn4
 
 from .models import VcfComparison
+from .euler import plot_pass_fail_euler_diagram
 
 
-def filter_progress(fail_count, pass_count, last=False):
+def print_filter_progress(fail_count: int, pass_count: int, last: bool = False):
+    """ Print pass and fail count on every 10 pass records, unless last """
     end = '\r'
-    # Print on every 10 pass records unless last
     if last or pass_count % 10 == 0:
         if last:
             end = '\n'
-        print(f"Pass: {pass_count} Fail: {fail_count}", end=end, file=sys.stderr)
-
+        print(f"Pass: {pass_count} Fail: {fail_count}", end=end)
     return 1
 
 
-def _vcf_records_to_sets(vcf: str) -> list[set[str]]:
+def _vcf_records_to_pass_fail_sets(vcf_path: str, print_progress: bool = False) -> list[set[str]]:
+    """ Read a VCF file and store information (TODO - what information?) about all and 
+    pass-only/non-filtered variants, for comparison """
     all = []
     passes = []
 
     pass_count = 0
     fail_count = 0
 
-    for record in VCF(vcf):
+    for record in VCF(vcf_path):
         # TODO - this is where to add in selecting different INFO/FORMAT fields to compare
         record_str = f"{record.CHROM}\t{record.start}\t{record.end}\t{record.ALT[0]}"
 
@@ -38,110 +38,147 @@ def _vcf_records_to_sets(vcf: str) -> list[set[str]]:
             pass_count += 1
             passes.append(record_str)
 
-            filter_progress(fail_count, pass_count)
+            if print_progress:
+                print_filter_progress(fail_count, pass_count)
 
-    filter_progress(fail_count, pass_count, True)
+    if print_progress:
+        print_filter_progress(fail_count, pass_count, True)
 
     return [set(all), set(passes)]
 
 
-def _original_venn_compare_sets(old_all, old_pass, new_all, new_pass):
-    """  
-    Original venn_compare subsets (15)
-    [A, B, C, D, AB, AC, AD, BC, BD, CD, ABC, ABD, ACD, BCD, ABCD]
-    """
-
-    subsets = []
-    
-    subsets.append(  # Abcd
-        old_all.difference(old_pass.union(new_all, new_pass))
-    )
-    subsets.append(  # aBcd
-        old_pass.difference(old_all.union(new_all, new_pass))
-    )
-    subsets.append(  # abCd
-        new_all.difference(old_all.union(old_pass, new_pass))
-    )
-    subsets.append(  # abcD
-        new_pass.difference(old_all.union(old_pass, new_all))
-    )
-    subsets.append(  # ABcd
-        old_all.intersection(old_pass).difference(new_all.union(new_pass))
-    )
-    subsets.append(  # AbCd
-        old_all.intersection(new_all).difference(old_pass.union(new_pass))
-    )
-    subsets.append(  # AbcD
-        old_all.intersection(new_pass).difference(old_pass.union(new_all))
-    )
-    subsets.append(  # aBCd
-        old_pass.intersection(new_all).difference(old_all.union(new_pass))
-    )
-    subsets.append(  # aBcD
-        old_pass.intersection(new_pass).difference(old_all.union(new_all))
-    )
-    subsets.append(  # abCD
-        new_all.intersection(new_pass).difference(old_all.union(old_pass))
-    )
-    subsets.append(  # ABCd
-        old_all.intersection(old_pass, new_all).difference(new_pass)
-    )
-    subsets.append(  # ABcD
-        old_all.intersection(old_pass, new_pass).difference(new_all)
-    )
-    subsets.append(  # AbCD
-        old_all.intersection(new_all, new_pass).difference(old_pass)
-    )
-    subsets.append(  # aBCD
-        old_pass.intersection(new_all, new_pass).difference(old_all)
-    )
-    subsets.append(  # ABCD
-        old_all.intersection(old_pass, new_all, new_pass)
-    )
-
-    return subsets
-
-
-class Venn(VcfComparison):
-    """ 
-    Load 2 VCFs, plot unique/shared variants.
-    TODO - how to configure which fields 
-    TODO - setting for whether to look at PASS field
-    """
+class VennVariantComparison(VcfComparison):
+    """ Base class """
     old_sets: list[set[str]]
     new_sets: list[set[str]]
-    subsets: list
 
-
-    def __init__(self, old_vcf: str, new_vcf: str) -> None:
+    def __init__(self, old_vcf_path: str, new_vcf_path: str) -> None:
         # Load VCFs
-        print('Loading old: ' + old_vcf, file=sys.stderr)
-        self.old_sets = _vcf_records_to_sets(old_vcf)
+        print('Loading old: ' + old_vcf_path)
+        self.old_sets = _vcf_records_to_pass_fail_sets(old_vcf_path)
 
-        print('Loading new: ' + new_vcf, file=sys.stderr)
-        self.new_sets = _vcf_records_to_sets(new_vcf)
-        
-        # Generate subsets
-        (old_all, old_pass, new_all, new_pass) = *self.old_sets, *self.new_sets
+        print('Loading new: ' + new_vcf_path)
+        self.new_sets = _vcf_records_to_pass_fail_sets(new_vcf_path)
 
-        print("Comparing sets...", file=sys.stderr)
 
-        self.subsets = _original_venn_compare_sets(*self.old_sets, *self.new_sets)
+class Venn2VariantComparison(VennVariantComparison):
+    """ Produces simple 2-way venn diagram of shared / unique variants """
 
+    def __init__(self, old_vcf: str, new_vcf: str, pass_only: bool = False):
+        super().__init__(old_vcf, new_vcf)
+        self.pass_only = pass_only 
+
+    def _2way_venn_compare_sets(self, old_set: set[str], new_set: set[str]) -> list[set[str]]:
+        return [
+            old_set.difference(new_set),    # A
+            new_set.difference(old_set),    # B
+            old_set.intersection(new_set)   # C
+        ]
 
     def plot(self) -> Axes:
-        print("Plotting...", file=sys.stderr)
+        print("Comparing sets...")
+
+        set_index = 1 if self.pass_only else 0
+        subsets = self._2way_venn_compare_sets(self.old_sets[set_index], self.new_sets[set_index])
+
+        print("Plotting...")
         subset_lens = []
+        for subset in subsets:
+            subset_lens.append(len(subset))
 
-        for e in self.subsets:
-            subset_lens.append(len(e))
-
-        ax = venn4(subsets=subset_lens,
-                  set_labels=('old_a', 'old_p', 'new_a', 'new_p'),
+        ax = venn2(subsets=subset_lens,
+                  set_labels=('old', 'new', 'shared'),
                   set_label_fontsize=12,
                   subset_label_fontsize=10)
         
         ax.set_title("Venn of Old vs New")
+
+        return ax
+
+
+class Venn4VariantComparison(VennVariantComparison):
+    """ Produces original 4-way vennCompare.py venn diagrams showing changes
+    in pass variants """
+
+    def _4way_venn_compare_sets(self,
+                                    old_all: set[str],
+                                    old_pass: set[str],
+                                    new_all: set[str],
+                                    new_pass: set[str]
+                                ) -> list[set[str]]:
+        """  
+        Original venn_compare subsets (15)
+        [A, B, C, D, AB, AC, AD, BC, BD, CD, ABC, ABD, ACD, BCD, ABCD]
+        """
+
+        return [
+            old_all.difference(old_pass.union(new_all, new_pass)),              # Abcd
+            old_pass.difference(old_all.union(new_all, new_pass)),              # aBcd
+            new_all.difference(old_all.union(old_pass, new_pass)),              # abCd
+            new_pass.difference(old_all.union(old_pass, new_all)),              # abcD
+            old_all.intersection(old_pass).difference(new_all.union(new_pass)), # ABcd
+            old_all.intersection(new_all).difference(old_pass.union(new_pass)), # AbCd
+            old_all.intersection(new_pass).difference(old_pass.union(new_all)), # AbcD
+            old_pass.intersection(new_all).difference(old_all.union(new_pass)), # aBCd
+            old_pass.intersection(new_pass).difference(old_all.union(new_all)), # aBcD
+            new_all.intersection(new_pass).difference(old_all.union(old_pass)), # abCD
+            old_all.intersection(old_pass, new_all).difference(new_pass),       # ABCd
+            old_all.intersection(old_pass, new_pass).difference(new_all),       # ABcD
+            old_all.intersection(new_all, new_pass).difference(old_pass),       # AbCD
+            old_pass.intersection(new_all, new_pass).difference(old_all),       # aBCD
+            old_all.intersection(old_pass, new_all, new_pass)                   # ABCD
+        ]
+
+    def plot(self) -> Axes:
+        print("Comparing sets...")
+        subsets = self._4way_venn_compare_sets(*self.old_sets, *self.new_sets)
+
+        print("Plotting...")
+        subset_lens = []
+        for subset in subsets:
+            subset_lens.append(len(subset))
+
+        ax = venn4(subsets=subset_lens,
+                   set_labels=('old_a', 'old_p', 'new_a', 'new_p'),
+                   set_label_fontsize=12,
+                   subset_label_fontsize=10)
+        
+        ax.set_title("Venn of Old vs New")
+        return ax
+
+
+class EulerVariantComparison(VennVariantComparison):
+    """ Produces pass / fail Euler diagram """
+
+    def _euler_sets(self,
+                    old_all: set[str],
+                    old_pass: set[str],
+                    new_all: set[str],
+                    new_pass: set[str]
+                    ) -> list[set[str]]:
+        """ Generate 8 sets for euler diagram """
+        return [
+            old_all.difference(old_pass.union(new_all, new_pass)),          # 1 in old_all only
+            new_all.difference(new_pass.union(old_all, old_pass)),          # 2 in new_all only 
+            old_all.intersection(new_all).difference(old_pass, new_pass),   # 3 in old_all & new_all
+            old_pass.difference(old_all.union(new_all, new_pass)),          # 4 in old_pass only
+            new_pass.difference(new_all.union(old_all, old_pass)),          # 5 in new_pass only
+            old_pass.difference(new_all),                                   # 6 in old_pass & new_all
+            new_pass.difference(old_all),                                   # 7 in new_pass & old_all
+            old_pass.intersection(new_pass)                                 # 8 in old_pass & new_pass
+        ]
+        
+
+    def plot(self) -> Axes:
+        print("Comparing sets...")
+        subsets = self._euler_sets(*self.old_sets, *self.new_sets)
+
+        print("Plotting...")
+        subset_lens = []
+        for subset in subsets:
+            subset_lens.append(len(subset))
+
+        _, ax = plot_pass_fail_euler_diagram(subset_lens)
 
         return ax
 
