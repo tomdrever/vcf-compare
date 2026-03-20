@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.figure import Figure
 from matplotlib.axes import Axes
  
 # Regions
@@ -18,7 +17,10 @@ from matplotlib.axes import Axes
 # - set_colours
 # - set font sizes
 
-def plot_pass_fail_euler_diagram(sizes: list[int]) -> tuple[Figure, Axes]: 
+def plot_pass_fail_euler_diagram(
+        sizes: list[int],
+        ax: Axes | None = None
+        ) -> Axes: 
     """ Plot nested venn diagram / euler diagram showing the intersections of 2 sets and their pass subsets """
     if len(sizes) != 8:
         raise ValueError(f"Invalid number of sizes {len(sizes)} for pass/fail plot, must be 8!")
@@ -48,7 +50,9 @@ def plot_pass_fail_euler_diagram(sizes: list[int]) -> tuple[Figure, Axes]:
     ]
     
     # Plot
-    fig, ax = plt.subplots(figsize=(12, 8))
+    if ax is None:
+        _, ax = plt.subplots(figsize=(12, 8))
+        
     ax.set_aspect("equal")
     ax.set_xlim(-3.6, 3.6)
     ax.set_ylim(-2.0, 2.4)
@@ -98,4 +102,4 @@ def plot_pass_fail_euler_diagram(sizes: list[int]) -> tuple[Figure, Axes]:
         )
 
     ax.set_title("Old vs new — all / pass breakdown", fontsize=14, pad=30)
-    return fig, ax
+    return ax

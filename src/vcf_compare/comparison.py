@@ -51,8 +51,9 @@ class VennVariantComparison(VcfComparison):
     """ Base class """
     old_sets: list[set[str]]
     new_sets: list[set[str]]
+    sample_name: str
 
-    def __init__(self, old_vcf_path: str, new_vcf_path: str) -> None:
+    def __init__(self, old_vcf_path: str, new_vcf_path: str, sample_name: str = "") -> None:
         # Load VCFs
         print('Loading old: ' + old_vcf_path)
         self.old_sets = _vcf_records_to_pass_fail_sets(old_vcf_path)
@@ -60,12 +61,14 @@ class VennVariantComparison(VcfComparison):
         print('Loading new: ' + new_vcf_path)
         self.new_sets = _vcf_records_to_pass_fail_sets(new_vcf_path)
 
+        self.sample_name = sample_name
+
 
 class Venn2VariantComparison(VennVariantComparison):
     """ Produces simple 2-way venn diagram of shared / unique variants """
 
-    def __init__(self, old_vcf: str, new_vcf: str, pass_only: bool = False):
-        super().__init__(old_vcf, new_vcf)
+    def __init__(self, old_vcf: str, new_vcf: str, sample_name: str = "", pass_only: bool = False):
+        super().__init__(old_vcf, new_vcf, sample_name)
         self.pass_only = pass_only 
 
     def _2way_venn_compare_sets(self, old_set: set[str], new_set: set[str]) -> list[set[str]]:
@@ -75,7 +78,7 @@ class Venn2VariantComparison(VennVariantComparison):
             old_set.intersection(new_set)   # C
         ]
 
-    def plot(self) -> Axes:
+    def plot(self, ax: Axes | None = None) -> Axes:
         print("Comparing sets...")
 
         set_index = 1 if self.pass_only else 0
@@ -89,9 +92,11 @@ class Venn2VariantComparison(VennVariantComparison):
         ax = venn2(subsets=subset_lens,
                   set_labels=('old', 'new', 'shared'),
                   set_label_fontsize=12,
-                  subset_label_fontsize=10)
+                  subset_label_fontsize=10,
+                  ax=ax)
         
-        ax.set_title("Venn of Old vs New")
+        prefix = "Venn of " if not self.sample_name else f"{self.sample_name} - "
+        ax.set_title(prefix + "Old vs New")
 
         return ax
 
@@ -129,7 +134,7 @@ class Venn4VariantComparison(VennVariantComparison):
             old_all.intersection(old_pass, new_all, new_pass)                   # ABCD
         ]
 
-    def plot(self) -> Axes:
+    def plot(self, ax: Axes | None = None) -> Axes:
         print("Comparing sets...")
         subsets = self._4way_venn_compare_sets(*self.old_sets, *self.new_sets)
 
@@ -141,9 +146,12 @@ class Venn4VariantComparison(VennVariantComparison):
         ax = venn4(subsets=subset_lens,
                    set_labels=('old_a', 'old_p', 'new_a', 'new_p'),
                    set_label_fontsize=12,
-                   subset_label_fontsize=10)
+                   subset_label_fontsize=10,
+                   ax=ax)
         
-        ax.set_title("Venn of Old vs New")
+        prefix = "Venn of " if not self.sample_name else f"{self.sample_name} - "
+        ax.set_title(prefix + "Old vs New")
+
         return ax
 
 
@@ -161,15 +169,15 @@ class EulerVariantComparison(VennVariantComparison):
             old_all.difference(old_pass.union(new_all, new_pass)),          # 1 in old_all only
             new_all.difference(new_pass.union(old_all, old_pass)),          # 2 in new_all only 
             old_all.intersection(new_all).difference(old_pass, new_pass),   # 3 in old_all & new_all
-            old_pass.difference(old_all.union(new_all, new_pass)),          # 4 in old_pass only
-            new_pass.difference(new_all.union(old_all, old_pass)),          # 5 in new_pass only
-            old_pass.difference(new_all),                                   # 6 in old_pass & new_all
-            new_pass.difference(old_all),                                   # 7 in new_pass & old_all
+            old_pass.difference(new_all),                                   # 4 in old_pass only
+            new_pass.difference(old_all),                                   # 5 in new_pass only
+            old_pass.intersection(new_all).difference(new_pass),            # 6 in old_pass & new_all (not new_pass)
+            new_pass.intersection(old_all).difference(old_pass),            # 7 in new_pass & old_all (not old_pass)
             old_pass.intersection(new_pass)                                 # 8 in old_pass & new_pass
         ]
         
 
-    def plot(self) -> Axes:
+    def plot(self, ax: Axes | None = None) -> Axes:
         print("Comparing sets...")
         subsets = self._euler_sets(*self.old_sets, *self.new_sets)
 
@@ -178,7 +186,10 @@ class EulerVariantComparison(VennVariantComparison):
         for subset in subsets:
             subset_lens.append(len(subset))
 
-        _, ax = plot_pass_fail_euler_diagram(subset_lens)
+        ax = plot_pass_fail_euler_diagram(subset_lens, ax=ax)
+
+        prefix = "Venn of " if not self.sample_name else f"{self.sample_name} - "
+        ax.set_title(prefix + "Old vs New")
 
         return ax
 
