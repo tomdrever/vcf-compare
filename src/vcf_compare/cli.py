@@ -4,7 +4,7 @@ import click
 from matplotlib import pyplot as plt
 
 from . import __version__
-from . comparison import EulerVariantComparison
+from .comparison import EulerVariantComparison
 
 
 @click.command()
@@ -17,12 +17,11 @@ from . comparison import EulerVariantComparison
 @click.argument("new", type=click.Path(exists=True, dir_okay=False))
 def venn_compare(out: str | None, format: str, info_filter: str, name: str, old: str, new: str):
     venn = EulerVariantComparison(old, new, name)
-    
-    ax = venn.plot()
 
-    # TODO - is this needed for CLI mode?
+    venn.plot()
+
     plt.plot()
-    
-    if out: 
+
+    if out:
         pre = f"{name}_" if name else ""
         plt.savefig(os.path.join(out, f"{pre}venn.{format}"))

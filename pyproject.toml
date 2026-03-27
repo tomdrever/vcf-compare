@@ -24,7 +24,7 @@ dev = [
 version = {attr = "vcf_compare.__version__"}
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 
 [project.scripts]
 venn-compare="vcf_compare.cli:venn_compare"
