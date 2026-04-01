@@ -1,9 +1,14 @@
+from typing import Any
+from collections import defaultdict
+
 from cyvcf2 import VCF
 from matplotlib.axes import Axes
 from simple_venn import venn2, venn4
+import matplotlib.pyplot as plt
 
 from .models import VcfComparison
 from .euler import plot_pass_fail_euler_diagram
+from .position import plot_position_graph
 
 
 def print_filter_progress(fail_count: int, pass_count: int, last: bool = False):
@@ -45,6 +50,27 @@ def _vcf_records_to_pass_fail_sets(vcf_path: str, print_progress: bool = False) 
         print_filter_progress(fail_count, pass_count, True)
 
     return [set(all), set(passes)]
+
+
+def _vcf_records_to_metric_list(vcf_path: str, pass_only: bool, print_progress: bool = False) -> list[Any]:
+    # TODO - metrics other than QUAL? 
+    metrics = []
+    
+    for record in VCF(vcf_path):
+        # If pass_only = true only add if no record.FILTER
+        #if not pass_only or not record.FILTER:
+        metrics.append(record.QUAL)
+
+    return metrics
+
+
+def _vcf_records_to_positions(vcf_path: str, pass_only: bool, print_progress: bool = False) -> dict[str, list[int]]:
+    chroms = defaultdict(list)
+
+    for record in VCF(vcf_path):
+        chroms[record.CHROM].append(record.POS)
+
+    return chroms
 
 
 class VennVariantComparison(VcfComparison):
@@ -219,10 +245,92 @@ class EulerVariantComparison(VennVariantComparison):
 class Position(VcfComparison):
     """Load multiple VCFs, plot each's variants positions"""
 
-    def __init__(self) -> None: ...
+    variant_positions: dict[str, set[str]]
+
+    def __init__(
+        self,
+        *vcfs: tuple[str, str],
+        pass_only: bool = False,
+        unique_only: bool = False
+    ) -> None:
+        """Supports multiple VCFs via args, which are all assumed to be tuples in format [name, path]"""
+
+        self.variant_positions = {}
+
+        # Load VCFs
+        for vcf in vcfs:
+            name = vcf[0]
+            path = vcf[1]
+
+            vcf_chroms = set()
+            for record in VCF(path):
+                # If pass-only, filter
+                if not pass_only or not record.FILTER:
+                    vcf_chroms.add(f"{record.CHROM}-{record.POS}")
+
+            self.variant_positions[name] = vcf_chroms
+
+        if unique_only:
+            # Update variant positions to be only those not found in other variants
+            for sample in self.variant_positions:
+                sample_variants = self.variant_positions[sample]
+
+                # Get all variants from other samples
+                other_variants = set()
+                for other_sample in self.variant_positions:
+                    if sample != other_sample:
+                        other_variants.update(self.variant_positions[other_sample])
+
+                self.variant_positions[sample] = sample_variants.difference(other_variants)
+
+    def plot(self, ax: Axes | None = None) -> Axes:
+        # Split variant position by chromosome
+        variant_positions_by_chr: dict[str, dict[str, set[str]]] = {}
+        
+        for sample in self.variant_positions:
+            sample_var_pos_by_chr = defaultdict(list)
+            for variant_position in self.variant_positions[sample]:
+                chr, position = variant_position.split("-")
+                sample_var_pos_by_chr[chr].append(int(position))
+
+            variant_positions_by_chr[sample] = sample_var_pos_by_chr
+
+        return plot_position_graph(variant_positions_by_chr, ax)
 
 
 class Metric(VcfComparison):
-    """Box plots of a specific metric - e.g. quality"""
+    """Box plots of a specific metric for 2 VCFs - e.g. quality"""
 
-    def __init__(self) -> None: ...
+    metrics: dict[str, list[Any]]
+
+    def __init__(
+        self,
+        *vcfs: tuple[str, str],
+        pass_only: bool = False
+    ) -> None:
+        """Supports multiple VCFs via args, which are all assumed to be tuples in format [name, path]"""
+        self.metrics = {}
+
+        # Load VCFs
+        for vcf in vcfs:
+            name = vcf[0]
+            path = vcf[1]
+
+            print(f"Loading {name}: {path}")
+            self.metrics[name] = _vcf_records_to_metric_list(path, pass_only)
+
+
+    def plot(self, ax: Axes | None = None) -> Axes:
+        if ax is None:
+            _, ax = plt.subplots(figsize=(10, 6))
+
+        metrics_lists = [self.metrics[sample] for sample in self.metrics]
+
+        ax.boxplot(metrics_lists, labels=self.metrics.keys(), patch_artist=True)
+
+        ax.set_xlabel("Variant set")
+        ax.set_ylabel("Median QUAL")
+        ax.set_title("Metric by sample")
+        ax.legend()
+
+        return ax
