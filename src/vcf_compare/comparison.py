@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 from collections import defaultdict
 
 from cyvcf2 import VCF
@@ -52,25 +52,32 @@ def _vcf_records_to_pass_fail_sets(vcf_path: str, print_progress: bool = False) 
     return [set(all), set(passes)]
 
 
-def _vcf_records_to_metric_list(vcf_path: str, pass_only: bool, print_progress: bool = False) -> list[Any]:
-    # TODO - metrics other than QUAL? 
+def _resolve_metric(metric: str | Callable[[Any], Any]) -> Callable[[Any], Any]:
+    if callable(metric):
+        return metric
+    if metric == "QUAL":
+        return lambda r: r.QUAL
+    if metric.startswith("INFO."):
+        field = metric[5:]
+        return lambda r: r.INFO[field]
+    raise ValueError(
+        f"Unknown metric {metric!r}. Use 'QUAL', 'INFO.<field>', or a callable."
+    )
+
+
+def _vcf_records_to_metric_list(
+    vcf_path: str,
+    pass_only: bool,
+    metric: str | Callable[[Any], Any] = "QUAL"
+) -> list[Any]:
     metrics = []
-    
+
     for record in VCF(vcf_path):
         # If pass_only = true only add if no record.FILTER
-        #if not pass_only or not record.FILTER:
-        metrics.append(record.QUAL)
+        if not pass_only or not record.FILTER:
+            metrics.append(_resolve_metric(record))
 
     return metrics
-
-
-def _vcf_records_to_positions(vcf_path: str, pass_only: bool, print_progress: bool = False) -> dict[str, list[int]]:
-    chroms = defaultdict(list)
-
-    for record in VCF(vcf_path):
-        chroms[record.CHROM].append(record.POS)
-
-    return chroms
 
 
 class VennVariantComparison(VcfComparison):
@@ -299,17 +306,19 @@ class Position(VcfComparison):
 
 
 class Metric(VcfComparison):
-    """Box plots of a specific metric for 2 VCFs - e.g. quality"""
+    """ Box plots of a specific metric for multiple VCFs - e.g. quality """
 
-    metrics: dict[str, list[Any]]
+    metrics: dict[str, list[Any]] # dict of {sample : variant_metric_values}
 
     def __init__(
         self,
         *vcfs: tuple[str, str],
-        pass_only: bool = False
+        pass_only: bool = False,
+        metric: str | Callable[[Any], Any] = "QUAL",
     ) -> None:
         """Supports multiple VCFs via args, which are all assumed to be tuples in format [name, path]"""
         self.metrics = {}
+        self.metric = metric
 
         # Load VCFs
         for vcf in vcfs:
@@ -317,7 +326,7 @@ class Metric(VcfComparison):
             path = vcf[1]
 
             print(f"Loading {name}: {path}")
-            self.metrics[name] = _vcf_records_to_metric_list(path, pass_only)
+            self.metrics[name] = _vcf_records_to_metric_list(path, pass_only, metric)
 
 
     def plot(self, ax: Axes | None = None) -> Axes:
@@ -328,9 +337,10 @@ class Metric(VcfComparison):
 
         ax.boxplot(metrics_lists, labels=self.metrics.keys(), patch_artist=True)
 
+        metric_label = self.metric if isinstance(self.metric, str) else "custom metric"
         ax.set_xlabel("Variant set")
-        ax.set_ylabel("Median QUAL")
-        ax.set_title("Metric by sample")
+        ax.set_ylabel(metric_label)
+        ax.set_title(f"{metric_label} by sample")
         ax.legend()
 
         return ax
