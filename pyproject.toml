@@ -7,11 +7,14 @@ name = "vcf_compare"
 dynamic = ["version"]
 description = "Tool for comparing VCFs"
 readme = "README.md"
+authors = [
+    {name = "Tom Drever", email = "tomdr1001@outlook.com"},
+]
 requires-python = ">=3.12"
 dependencies = [
     "click>=8.3.1",
     "cyvcf2>=0.14.2",
-    "matplotlib",
+    "matplotlib>=3.10.8",
     "simple-venn>=0.2.1"
 ]
 
@@ -25,6 +28,10 @@ version = {attr = "vcf_compare.__version__"}
 
 [tool.ruff]
 line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
 
 [project.scripts]
 venn-compare="vcf_compare.cli:venn_compare"

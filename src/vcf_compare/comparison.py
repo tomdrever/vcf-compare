@@ -298,7 +298,7 @@ class Position(VcfComparison):
     def plot(self, ax: Axes | None = None) -> Axes:
         # Split variant position by chromosome
         variant_positions_by_chr: dict[str, dict[str, list[int]]] = {}
-        
+
         for sample in self.variant_positions:
             sample_var_pos_by_chr = defaultdict(list)
             for variant_position in self.variant_positions[sample]:
