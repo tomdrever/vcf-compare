@@ -22,7 +22,7 @@ def plot_position_graph(sample_variant_positions: dict[str, dict[str, list[int]]
     for i, chrom in enumerate(all_chroms_sorted):
         for j, sample in enumerate(sample_variant_positions):
             # Create 2 lists of coordinate positions.
-            
+
             # X is the variants position in the chromosome
             x_positions = sample_variant_positions[sample][chrom]
 
@@ -34,7 +34,14 @@ def plot_position_graph(sample_variant_positions: dict[str, dict[str, list[int]]
             sample_label = sample if i == 0 else ""
 
             # Scatter plot
-            ax.scatter(x_positions, y_positions, alpha=0.1, s=5, label=sample_label, color=SAMPLES_COLOURS[j], edgecolors='none')
+            ax.scatter(x_positions,
+                       y_positions,
+                       alpha=0.1,
+                       s=5,
+                       label=sample_label,
+                       color=SAMPLES_COLOURS[j],
+                       edgecolors='none'
+                       )
 
     ax.set_yticks([i * num_samples for i in range(1, len(all_chroms_sorted)+1)], all_chroms_sorted)
     ax.set_xlabel("Genomic Position (bp)")
