@@ -1,7 +1,7 @@
 from typing import Any, Callable
 from collections import defaultdict
 
-from cyvcf2 import VCF
+from cyvcf2 import VCF, Variant
 from matplotlib.axes import Axes
 from simple_venn import venn2, venn4
 import matplotlib.pyplot as plt
@@ -52,6 +52,13 @@ def _vcf_records_to_pass_fail_sets(vcf_path: str, print_progress: bool = False) 
     return [set(all), set(passes)]
 
 
+def _get_info_field_metric(record: Variant, field: str) -> int | float:
+    metric = record.INFO[field]
+    if type(metric) not in [int, float]:
+        raise ValueError(f"Error parsing metric INFO field '{field}' - invalid type {type(metric)}")
+    return metric
+
+
 def _resolve_metric(metric: str | Callable[[Any], Any]) -> Callable[[Any], Any]:
     if callable(metric):
         return metric
@@ -59,30 +66,28 @@ def _resolve_metric(metric: str | Callable[[Any], Any]) -> Callable[[Any], Any]:
         return lambda r: r.QUAL
     if metric.startswith("INFO."):
         field = metric[5:]
-        return lambda r: r.INFO[field]
-    raise ValueError(
-        f"Unknown metric {metric!r}. Use 'QUAL', 'INFO.<field>', or a callable."
-    )
+        return lambda r: _get_info_field_metric(r, field)
+    raise ValueError(f"Unknown metric {metric!r}. Use 'QUAL', 'INFO.<field>', or a callable.")
 
 
 def _vcf_records_to_metric_list(
     vcf_path: str,
     pass_only: bool,
-    metric: str | Callable[[Any], Any] = "QUAL"
+    metric: str | Callable[[Any], Any]
 ) -> list[Any]:
     metrics = []
+    extractor = _resolve_metric(metric)
 
     for record in VCF(vcf_path):
         # If pass_only = true only add if no record.FILTER
         if not pass_only or not record.FILTER:
-            metrics.append(_resolve_metric(record))
+            metrics.append(extractor(record))
 
     return metrics
 
 
 class VennVariantComparison(VcfComparison):
-    """Base class"""
-
+    """Base class for Old vs New comparisons"""
     old_sets: list[set[str]]
     new_sets: list[set[str]]
     sample_name: str
@@ -292,7 +297,7 @@ class Position(VcfComparison):
 
     def plot(self, ax: Axes | None = None) -> Axes:
         # Split variant position by chromosome
-        variant_positions_by_chr: dict[str, dict[str, set[str]]] = {}
+        variant_positions_by_chr: dict[str, dict[str, list[int]]] = {}
         
         for sample in self.variant_positions:
             sample_var_pos_by_chr = defaultdict(list)
@@ -314,11 +319,12 @@ class Metric(VcfComparison):
         self,
         *vcfs: tuple[str, str],
         pass_only: bool = False,
-        metric: str | Callable[[Any], Any] = "QUAL",
+        metric: str | Callable[[Any], Any],
     ) -> None:
         """Supports multiple VCFs via args, which are all assumed to be tuples in format [name, path]"""
         self.metrics = {}
         self.metric = metric
+        self.pass_only = pass_only
 
         # Load VCFs
         for vcf in vcfs:
@@ -336,11 +342,13 @@ class Metric(VcfComparison):
         metrics_lists = [self.metrics[sample] for sample in self.metrics]
 
         ax.boxplot(metrics_lists, labels=self.metrics.keys(), patch_artist=True)
+        ax.set_xticklabels(list(self.metrics.keys()))
 
         metric_label = self.metric if isinstance(self.metric, str) else "custom metric"
+        pass_label = "(passes only) " if self.pass_only else ""
         ax.set_xlabel("Variant set")
         ax.set_ylabel(metric_label)
-        ax.set_title(f"{metric_label} by sample")
+        ax.set_title(f"{metric_label} {pass_label} by sample")
         ax.legend()
 
         return ax
