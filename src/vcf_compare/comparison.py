@@ -1,5 +1,5 @@
 from typing import Any, Callable
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 from cyvcf2 import VCF, Variant
 from matplotlib.axes import Axes
@@ -21,6 +21,13 @@ def print_filter_progress(fail_count: int, pass_count: int, last: bool = False):
     return 1
 
 
+def _get_record_string(record: Variant) -> str:
+    """ Convert a VCF record to string for quick comparison.
+    TODO - this is where to add in selecting different INFO/FORMAT fields to compare
+    """
+    return f"{record.CHROM}\t{record.start}\t{record.end}\t{record.ALT[0]}"
+
+
 def _vcf_records_to_pass_fail_sets(vcf_path: str, print_progress: bool = False) -> list[set[str]]:
     """Read a VCF file and store information (TODO - what information?) about all and
     pass-only/non-filtered variants, for comparison"""
@@ -31,9 +38,7 @@ def _vcf_records_to_pass_fail_sets(vcf_path: str, print_progress: bool = False) 
     fail_count = 0
 
     for record in VCF(vcf_path):
-        # TODO - this is where to add in selecting different INFO/FORMAT fields to compare
-        record_str = f"{record.CHROM}\t{record.start}\t{record.end}\t{record.ALT[0]}"
-
+        record_str = _get_record_string(record)
         all.append(record_str)
 
         # FILTER is None if pass or . in cyvcf2
@@ -53,6 +58,7 @@ def _vcf_records_to_pass_fail_sets(vcf_path: str, print_progress: bool = False) 
 
 
 def _get_info_field_metric(record: Variant, field: str) -> int | float:
+    """ Try and retrieve an INFO field metric from a record """
     metric = record.INFO[field]
     if type(metric) not in [int, float]:
         raise ValueError(f"Error parsing metric INFO field '{field}' - invalid type {type(metric)}")
@@ -60,6 +66,8 @@ def _get_info_field_metric(record: Variant, field: str) -> int | float:
 
 
 def _resolve_metric(metric: str | Callable[[Any], Any]) -> Callable[[Any], Any]:
+    """ Given a record-parsing function, or a metric string, from the Metric class, 
+    return a function to use to extract a metric from a VCF record """
     if callable(metric):
         return metric
     if metric == "QUAL":
@@ -74,14 +82,14 @@ def _vcf_records_to_metric_list(
     vcf_path: str,
     pass_only: bool,
     metric: str | Callable[[Any], Any]
-) -> list[Any]:
-    metrics = []
+) -> dict[str, Any]:
+    metrics = {}
     extractor = _resolve_metric(metric)
 
     for record in VCF(vcf_path):
         # If pass_only = true only add if no record.FILTER
         if not pass_only or not record.FILTER:
-            metrics.append(extractor(record))
+            metrics[_get_record_string(record)] = extractor(record)
 
     return metrics
 
@@ -282,18 +290,25 @@ class Position(VcfComparison):
 
             self.variant_positions[name] = vcf_chroms
 
+        # If enabled limit to unique variants for each VCF
         if unique_only:
-            # Update variant positions to be only those not found in other variants
-            for sample in self.variant_positions:
-                sample_variants = self.variant_positions[sample]
+            # Count instances of all positions in all VCFs
+            position_counts = Counter(position for sample in self.variant_positions for position in self.variant_positions[sample])
 
-                # Get all variants from other samples
-                other_variants = set()
-                for other_sample in self.variant_positions:
-                    if sample != other_sample:
-                        other_variants.update(self.variant_positions[other_sample])
+            self.variant_positions = {
+                sample: [position for position in positions if position_counts[position] == 1] for sample, positions in self.variant_positions.items()
+            }
 
-                self.variant_positions[sample] = sample_variants.difference(other_variants)
+            # for sample in self.variant_positions:
+            #     sample_variants = self.variant_positions[sample]
+
+            #     # Get all variants from other samples
+            #     other_variants = set()
+            #     for other_sample in self.variant_positions:
+            #         if sample != other_sample:
+            #             other_variants.update(self.variant_positions[other_sample])
+
+            #     self.variant_positions[sample] = sample_variants.difference(other_variants)
 
     def plot(self, ax: Axes | None = None) -> Axes:
         # Split variant position by chromosome
@@ -311,20 +326,22 @@ class Position(VcfComparison):
 
 
 class Metric(VcfComparison):
-    """ Box plots of a specific metric for multiple VCFs - e.g. quality """
+    """Box plots of a specific metric for multiple VCFs - e.g. quality"""
 
-    metrics: dict[str, list[Any]] # dict of {sample : variant_metric_values}
+    metrics: dict[str, dict[str, Any]] # dict of {sample : {variant: metric}}
 
     def __init__(
         self,
         *vcfs: tuple[str, str],
         pass_only: bool = False,
+        unique_only: bool = False,
         metric: str | Callable[[Any], Any],
     ) -> None:
         """Supports multiple VCFs via args, which are all assumed to be tuples in format [name, path]"""
-        self.metrics = {}
         self.metric = metric
+        self.metrics = {}
         self.pass_only = pass_only
+        self.unique_only = unique_only
 
         # Load VCFs
         for vcf in vcfs:
@@ -332,14 +349,25 @@ class Metric(VcfComparison):
             path = vcf[1]
 
             print(f"Loading {name}: {path}")
+
             self.metrics[name] = _vcf_records_to_metric_list(path, pass_only, metric)
 
+        # If enabled limit to unique variants for each VCF
+        if self.unique_only:
+            # Count instances of all records in all VCFs
+            variant_counts = Counter(record_str for metric_list in self.metrics.values() for record_str in metric_list)
+            
+            # For each VCF, limit to just those records that only appear once (i.e. in this VCF, so are unique)
+            self.metrics = {
+                name: {record_str: metric for record_str, metric in vcf_metrics.items() if variant_counts[record_str] == 1}
+                for name, vcf_metrics in self.metrics.items()
+            }
 
     def plot(self, ax: Axes | None = None) -> Axes:
         if ax is None:
             _, ax = plt.subplots(figsize=(10, 6))
 
-        metrics_lists = [self.metrics[sample] for sample in self.metrics]
+        metrics_lists = [list(self.metrics[sample].values()) for sample in self.metrics]
 
         ax.boxplot(metrics_lists, labels=self.metrics.keys(), patch_artist=True)
         ax.set_xticklabels(list(self.metrics.keys()))
