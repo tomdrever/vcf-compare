@@ -2,8 +2,8 @@ from typing import Any, Callable
 from collections import defaultdict, Counter
 
 from cyvcf2 import VCF, Variant
-from matplotlib.axes import Axes
 from simple_venn import venn2, venn4
+from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 
 from .models import VcfComparison
@@ -66,7 +66,7 @@ def _get_info_field_metric(record: Variant, field: str) -> int | float:
 
 
 def _resolve_metric(metric: str | Callable[[Any], Any]) -> Callable[[Any], Any]:
-    """ Given a record-parsing function, or a metric string, from the Metric class, 
+    """ Given a record-parsing function, or a metric string, from the Metric class,
     return a function to use to extract a metric from a VCF record """
     if callable(metric):
         return metric
@@ -139,8 +139,8 @@ class Venn2VariantComparison(VennVariantComparison):
 
     def _2way_venn_compare_sets(self, old_set: set[str], new_set: set[str]) -> list[set[str]]:
         return [
-            old_set.difference(new_set),  # 1. in old but not new
-            new_set.difference(old_set),  # 2. in new but not old
+            old_set.difference(new_set),    # 1. in old but not new
+            new_set.difference(old_set),    # 2. in new but not old
             old_set.intersection(new_set),  # 3. in both old and new
         ]
 
@@ -155,21 +155,23 @@ class Venn2VariantComparison(VennVariantComparison):
         for subset in subsets:
             subset_lens.append(len(subset))
 
+        set_labels=(self.a_name, self.b_name)
+        print(set_labels)
+
         ax = venn2(
             subsets=subset_lens,
-            set_labels=(self.a_name, self.b_name, "shared"),
+            set_labels=set_labels,
             set_label_fontsize=18,
             subset_label_fontsize=16,
             set_colors=["#7B6FCF", "#2A9D7A"],
             ax=ax,
         )
 
-        prefix = "Venn of " if not self.sample_name else f"{self.sample_name} - "
-
-        if not title:
-            ax.set_title(prefix + f"{self.a_name} vs {self.b_name}", fontdict={"fontsize": 18})
-        else:
+        if title:
             ax.set_title(title, fontdict={"fontsize": 18})
+        else:
+            prefix = "Venn of" if not self.sample_name else f"{self.sample_name} -"
+            ax.set_title(f"{prefix} {self.a_name} vs {self.b_name}", fontdict={"fontsize": 18})
 
         return ax
 
@@ -187,21 +189,21 @@ class Venn4VariantComparison(VennVariantComparison):
         """
 
         return [
-            old_all.difference(old_pass.union(new_all, new_pass)),  # Abcd
-            old_pass.difference(old_all.union(new_all, new_pass)),  # aBcd
-            new_all.difference(old_all.union(old_pass, new_pass)),  # abCd
-            new_pass.difference(old_all.union(old_pass, new_all)),  # abcD
-            old_all.intersection(old_pass).difference(new_all.union(new_pass)),  # ABcd
-            old_all.intersection(new_all).difference(old_pass.union(new_pass)),  # AbCd
-            old_all.intersection(new_pass).difference(old_pass.union(new_all)),  # AbcD
-            old_pass.intersection(new_all).difference(old_all.union(new_pass)),  # aBCd
-            old_pass.intersection(new_pass).difference(old_all.union(new_all)),  # aBcD
-            new_all.intersection(new_pass).difference(old_all.union(old_pass)),  # abCD
-            old_all.intersection(old_pass, new_all).difference(new_pass),  # ABCd
-            old_all.intersection(old_pass, new_pass).difference(new_all),  # ABcD
-            old_all.intersection(new_all, new_pass).difference(old_pass),  # AbCD
-            old_pass.intersection(new_all, new_pass).difference(old_all),  # aBCD
-            old_all.intersection(old_pass, new_all, new_pass),  # ABCD
+            old_all.difference(old_pass.union(new_all, new_pass)),              # Abcd
+            old_pass.difference(old_all.union(new_all, new_pass)),              # aBcd
+            new_all.difference(old_all.union(old_pass, new_pass)),              # abCd
+            new_pass.difference(old_all.union(old_pass, new_all)),              # abcD
+            old_all.intersection(old_pass).difference(new_all.union(new_pass)), # ABcd
+            old_all.intersection(new_all).difference(old_pass.union(new_pass)), # AbCd
+            old_all.intersection(new_pass).difference(old_pass.union(new_all)), # AbcD
+            old_pass.intersection(new_all).difference(old_all.union(new_pass)), # aBCd
+            old_pass.intersection(new_pass).difference(old_all.union(new_all)), # aBcD
+            new_all.intersection(new_pass).difference(old_all.union(old_pass)), # abCD
+            old_all.intersection(old_pass, new_all).difference(new_pass),       # ABCd
+            old_all.intersection(old_pass, new_pass).difference(new_all),       # ABcD
+            old_all.intersection(new_all, new_pass).difference(old_pass),       # AbCD
+            old_pass.intersection(new_all, new_pass).difference(old_all),       # aBCD
+            old_all.intersection(old_pass, new_all, new_pass),                  # ABCD
         ]
 
     def plot(self, ax: Axes | None = None) -> Axes:
@@ -235,17 +237,17 @@ class EulerVariantComparison(VennVariantComparison):
     ) -> list[set[str]]:
         """Generate 8 sets for euler diagram"""
         return [
-            old_all.difference(old_pass.union(new_all, new_pass)),  # 1 in old_all only
-            new_all.difference(new_pass.union(old_all, old_pass)),  # 2 in new_all only
-            old_all.intersection(new_all).difference(old_pass, new_pass),  # 3 in old_all & new_all
-            old_pass.difference(new_all),  # 4 in old_pass only
-            new_pass.difference(old_all),  # 5 in new_pass only
-            old_pass.intersection(new_all).difference(new_pass),  # 6 in old_pass & new_all (not new_pass)
-            new_pass.intersection(old_all).difference(old_pass),  # 7 in new_pass & old_all (not old_pass)
-            old_pass.intersection(new_pass),  # 8 in old_pass & new_pass
+            old_all.difference(old_pass.union(new_all, new_pass)),          # 1 in old_all only
+            new_all.difference(new_pass.union(old_all, old_pass)),          # 2 in new_all only
+            old_all.intersection(new_all).difference(old_pass, new_pass),   # 3 in old_all & new_all
+            old_pass.difference(new_all),                                   # 4 in old_pass only
+            new_pass.difference(old_all),                                   # 5 in new_pass only
+            old_pass.intersection(new_all).difference(new_pass),            # 6 in old_pass & new_all (not new_pass)
+            new_pass.intersection(old_all).difference(old_pass),            # 7 in new_pass & old_all (not old_pass)
+            old_pass.intersection(new_pass),                                # 8 in old_pass & new_pass
         ]
 
-    def plot(self, ax: Axes | None = None) -> Axes:
+    def plot(self, ax: Axes | None = None, title: str | None = None) -> Axes:
         print("Comparing sets...")
         subsets = self._euler_sets(*self.old_sets, *self.new_sets)
 
@@ -254,10 +256,18 @@ class EulerVariantComparison(VennVariantComparison):
         for subset in subsets:
             subset_lens.append(len(subset))
 
-        ax = plot_pass_fail_euler_diagram(subset_lens, ax=ax)
+        ax = plot_pass_fail_euler_diagram(
+            subset_lens,
+            a_name=self.a_name.lower(),
+            b_name=self.b_name.lower(),
+            ax=ax
+        )
 
-        prefix = "Venn of " if not self.sample_name else f"{self.sample_name} - "
-        ax.set_title(prefix + "Old vs New")
+        if title:
+            ax.set_title(title, fontdict={"fontsize": 18})
+        else:
+            prefix = "Venn of " if not self.sample_name else f"{self.sample_name} -"
+            ax.set_title(f"{prefix} {self.a_name} vs {self.b_name}")
 
         return ax
 
@@ -293,34 +303,28 @@ class Position(VcfComparison):
         # If enabled limit to unique variants for each VCF
         if unique_only:
             # Count instances of all positions in all VCFs
-            position_counts = Counter(position for sample in self.variant_positions for position in self.variant_positions[sample])
+            position_counts = Counter(
+                position for sample in self.variant_positions
+                for position in self.variant_positions[sample]
+            )
 
+            # For each VCF, limit to just those records that only appear once (i.e. in this VCF, so are unique)
             self.variant_positions = {
-                sample: [position for position in positions if position_counts[position] == 1] for sample, positions in self.variant_positions.items()
+                vcf_name: [position for position in positions if position_counts[position] == 1]
+                for vcf_name, positions in self.variant_positions.items()
             }
-
-            # for sample in self.variant_positions:
-            #     sample_variants = self.variant_positions[sample]
-
-            #     # Get all variants from other samples
-            #     other_variants = set()
-            #     for other_sample in self.variant_positions:
-            #         if sample != other_sample:
-            #             other_variants.update(self.variant_positions[other_sample])
-
-            #     self.variant_positions[sample] = sample_variants.difference(other_variants)
 
     def plot(self, ax: Axes | None = None) -> Axes:
         # Split variant position by chromosome
         variant_positions_by_chr: dict[str, dict[str, list[int]]] = {}
 
-        for sample in self.variant_positions:
-            sample_var_pos_by_chr = defaultdict(list)
-            for variant_position in self.variant_positions[sample]:
+        for vcf_name in self.variant_positions:
+            vcf_var_pos_by_chr = defaultdict(list)
+            for variant_position in self.variant_positions[vcf_name]:
                 chr, position = variant_position.split("-")
-                sample_var_pos_by_chr[chr].append(int(position))
+                vcf_var_pos_by_chr[chr].append(int(position))
 
-            variant_positions_by_chr[sample] = sample_var_pos_by_chr
+            variant_positions_by_chr[vcf_name] = vcf_var_pos_by_chr
 
         return plot_position_graph(variant_positions_by_chr, ax)
 
@@ -356,16 +360,17 @@ class Metric(VcfComparison):
         if self.unique_only:
             # Count instances of all records in all VCFs
             variant_counts = Counter(record_str for metric_list in self.metrics.values() for record_str in metric_list)
-            
+
             # For each VCF, limit to just those records that only appear once (i.e. in this VCF, so are unique)
             self.metrics = {
-                name: {record_str: metric for record_str, metric in vcf_metrics.items() if variant_counts[record_str] == 1}
-                for name, vcf_metrics in self.metrics.items()
+                vcf_name: {
+                    record_str: metric for record_str, metric in vcf_metrics.items() if variant_counts[record_str] == 1
+                } for vcf_name, vcf_metrics in self.metrics.items()
             }
 
     def plot(self, ax: Axes | None = None) -> Axes:
         if ax is None:
-            _, ax = plt.subplots(figsize=(10, 6))
+            _, ax = plt.subplots(figsize=(8, 6))
 
         metrics_lists = [list(self.metrics[sample].values()) for sample in self.metrics]
 
@@ -373,10 +378,11 @@ class Metric(VcfComparison):
         ax.set_xticklabels(list(self.metrics.keys()))
 
         metric_label = self.metric if isinstance(self.metric, str) else "custom metric"
-        pass_label = "(passes only) " if self.pass_only else ""
-        ax.set_xlabel("Variant set")
+        pass_label = " (passes only)" if self.pass_only else ""
+        unique_label = " (unique)" if self.unique_only else ""
+        ax.set_xlabel(f"Variant set{unique_label}")
         ax.set_ylabel(metric_label)
-        ax.set_title(f"{metric_label} {pass_label} by sample")
+        ax.set_title(f"{metric_label}{pass_label} by sample")
         ax.legend()
 
         return ax
