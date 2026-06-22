@@ -127,14 +127,14 @@ class Venn2VariantComparison(VennVariantComparison):
 
     def __init__(
         self,
-        old_vcf: str,
-        new_vcf: str,
+        a_vcf: str,
+        b_vcf: str,
         sample_name: str = "",
         a_name: str = "Old",
         b_name: str = "New",
         pass_only: bool = False,
     ) -> None:
-        super().__init__(old_vcf, new_vcf, sample_name, a_name, b_name)
+        super().__init__(a_vcf, b_vcf, sample_name, a_name, b_name)
         self.pass_only = pass_only
 
     def _2way_venn_compare_sets(self, old_set: set[str], new_set: set[str]) -> list[set[str]]:
@@ -156,7 +156,6 @@ class Venn2VariantComparison(VennVariantComparison):
             subset_lens.append(len(subset))
 
         set_labels=(self.a_name, self.b_name)
-        print(set_labels)
 
         ax = venn2(
             subsets=subset_lens,
@@ -220,7 +219,7 @@ class Venn4VariantComparison(VennVariantComparison):
             set_labels=("old_a", "old_p", "new_a", "new_p"),
             set_label_fontsize=12,
             subset_label_fontsize=10,
-            ax=ax,
+            ax=ax
         )
 
         prefix = "Venn of " if not self.sample_name else f"{self.sample_name} - "
@@ -233,18 +232,18 @@ class EulerVariantComparison(VennVariantComparison):
     """Produces pass / fail Euler diagram"""
 
     def _euler_sets(
-        self, old_all: set[str], old_pass: set[str], new_all: set[str], new_pass: set[str]
+        self, a_all: set[str], a_pass: set[str], b_all: set[str], b_pass: set[str]
     ) -> list[set[str]]:
         """Generate 8 sets for euler diagram"""
         return [
-            old_all.difference(old_pass.union(new_all, new_pass)),          # 1 in old_all only
-            new_all.difference(new_pass.union(old_all, old_pass)),          # 2 in new_all only
-            old_all.intersection(new_all).difference(old_pass, new_pass),   # 3 in old_all & new_all
-            old_pass.difference(new_all),                                   # 4 in old_pass only
-            new_pass.difference(old_all),                                   # 5 in new_pass only
-            old_pass.intersection(new_all).difference(new_pass),            # 6 in old_pass & new_all (not new_pass)
-            new_pass.intersection(old_all).difference(old_pass),            # 7 in new_pass & old_all (not old_pass)
-            old_pass.intersection(new_pass),                                # 8 in old_pass & new_pass
+            a_all.difference(a_pass.union(b_all, b_pass)),          # 1 in a_all only
+            b_all.difference(b_pass.union(a_all, a_pass)),          # 2 in b_all only
+            a_all.intersection(b_all).difference(a_pass, b_pass),   # 3 in a_all & b_all
+            a_pass.difference(b_all),                               # 4 in b_pass only
+            b_pass.difference(a_all),                               # 5 in a_pass only
+            a_pass.intersection(b_all).difference(b_pass),          # 6 in b_pass & b_all (not a_pass)
+            b_pass.intersection(a_all).difference(a_pass),          # 7 in a_pass & a_all (not b_pass)
+            a_pass.intersection(b_pass),                            # 8 in b_pass & a_pass
         ]
 
     def plot(self, ax: Axes | None = None, title: str | None = None) -> Axes:
@@ -310,7 +309,7 @@ class Position(VcfComparison):
 
             # For each VCF, limit to just those records that only appear once (i.e. in this VCF, so are unique)
             self.variant_positions = {
-                vcf_name: [position for position in positions if position_counts[position] == 1]
+                vcf_name: set(position for position in positions if position_counts[position] == 1)
                 for vcf_name, positions in self.variant_positions.items()
             }
 
